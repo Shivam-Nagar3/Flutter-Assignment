@@ -1,0 +1,426 @@
+import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:intl/intl.dart';
+
+void main() {
+  runApp(MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Attendance App',
+      theme: ThemeData(
+        primarySwatch: Colors.purple,
+      ),
+      home: HomePage(),
+    );
+  }
+}
+
+class HomePage extends StatefulWidget {
+  @override
+  _HomePageState createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  int _selectedIndex = 0;
+
+  static List<Widget> _pages = <Widget>[
+    AttendanceScreen(),
+    MembersScreen(), // Add MembersScreen here
+  ];
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Attendance App'),
+      ),
+      body: _pages[_selectedIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(
+            icon: Icon(Icons.list),
+            label: 'Attendance',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.people),
+            label: 'Members',
+          ),
+        ],
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
+      ),
+    );
+  }
+}
+
+// Attendance screen
+class AttendanceScreen extends StatefulWidget {
+  @override
+  _AttendanceScreenState createState() => _AttendanceScreenState();
+}
+
+class _AttendanceScreenState extends State<AttendanceScreen> {
+  bool _isMapView = false;
+
+  // Sample member data
+  final List<Member> members = [
+    Member(name: 'Shubham Goel', code: 'WSL0003', time: '09:30 am', status: 'Working', location: LatLng(37.7749, -122.4194)),
+    Member(name: 'Varun Khurana', code: 'WSL0034', time: '06:40 pm', status: 'Logged out', location: LatLng(37.7739, -122.4184)),
+    Member(name: 'Shivam Nagar', code: 'WSL0054', time: 'Not Logged In', status: 'Not Logged In Yet', location: LatLng(37.7740, -122.4200)),
+    Member(name: 'Yogesh Kumar', code: 'WSL0076', time: '06:40 pm', status: 'Logged out', location: LatLng(37.7745, -122.4220)),
+    
+    // Add more members here
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Attendance'),
+      ),
+      body: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Text(
+                  'All Members',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _isMapView = !_isMapView;
+                  });
+                },
+                child: Text(_isMapView ? 'Show List View' : 'Show Map View'),
+              ),
+            ],
+          ),
+          Expanded(
+            child: _isMapView ? AttendanceMapView(members: members) : AttendanceListView(members: members),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class AttendanceListView extends StatelessWidget {
+  final List<Member> members;
+
+  AttendanceListView({required this.members});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      itemCount: members.length,
+      itemBuilder: (context, index) {
+        final member = members[index];
+        return AttendanceItem(
+          name: member.name,
+          code: member.code,
+          time: member.time,
+          status: member.status,
+          location: member.location,
+          onLocationTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => MemberLocationScreen(member: member.name),
+              ),
+            );
+          },
+          onRouteDetailsTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => RouteDetailsScreen(member: member.name),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class AttendanceItem extends StatelessWidget {
+  final String name;
+  final String code;
+  final String time;
+  final String status;
+  final LatLng location; 
+  final VoidCallback onLocationTap;
+  final VoidCallback onRouteDetailsTap;
+
+  AttendanceItem({
+    required this.name,
+    required this.code,
+    required this.time,
+    required this.status,
+    required this.location,
+    required this.onLocationTap,
+    required this.onRouteDetailsTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      title: Text('$name ($code)'),
+      subtitle: Text(time),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: Icon(Icons.location_on),
+            onPressed: onLocationTap,
+          ),
+          IconButton(
+            icon: Icon(Icons.timeline),
+            onPressed: onRouteDetailsTap,
+          ),
+          _buildStatusWidget(status),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusWidget(String status) {
+    Color statusColor;
+    IconData statusIcon;
+
+    switch (status.toLowerCase()) {
+      case 'working':
+        statusColor = Colors.green;
+        statusIcon = Icons.check_circle;
+        break;
+      case 'logged out':
+        statusColor = Colors.red;
+        statusIcon = Icons.cancel;
+        break;
+      default:
+        statusColor = Colors.grey;
+        statusIcon = Icons.help;
+        break;
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(statusIcon, color: statusColor),
+        SizedBox(width: 4),
+        Text(status, style: TextStyle(color: statusColor)),
+      ],
+    );
+  }
+}
+class AttendanceMapView extends StatelessWidget {
+  final List<Member> members;
+
+  AttendanceMapView({required this.members});
+
+  @override
+  Widget build(BuildContext context) {
+    return GoogleMap(
+      initialCameraPosition: CameraPosition(
+        target: LatLng(37.7749, -122.4194), // Default camera position
+        zoom: 12,
+      ),
+      markers: members.map((member) {
+        return Marker(
+          markerId: MarkerId(member.code),
+          position: member.location,
+          infoWindow: InfoWindow(title: member.name),
+        );
+      }).toSet(),
+    );
+  }
+}
+
+// Member class to hold member data
+class Member {
+  final String name;
+  final String code;
+  final String time;
+  final String status;
+  final LatLng location;
+
+  Member({
+    required this.name,
+    required this.code,
+    required this.time,
+    required this.status,
+    required this.location,
+  });
+}
+
+// Members screen showing only names
+class MembersScreen extends StatelessWidget {
+  final List<Member> members = [
+    Member(name: 'Shubham Goel', code: 'WSL0003', time: '09:30 am', status: 'Working', location: LatLng(37.7749, -122.4194)),
+    Member(name: 'Varun Khurana', code: 'WSL0034', time: '06:40 pm', status: 'Logged out', location: LatLng(37.7739, -122.4184)),
+    Member(name: 'Shivam Nagar', code: 'WSL0054', time: 'Not Logged In', status: 'Not Logged In Yet', location: LatLng(37.7740, -122.4200)),
+    Member(name: 'Yogesh Kumar', code: 'WSL0076', time: '06:40 pm', status: 'Logged out', location: LatLng(37.7745, -122.4220)),
+    
+  ];
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Members'),
+      ),
+      body: ListView.builder(
+        itemCount: members.length,
+        itemBuilder: (context, index) {
+          final member = members[index];
+          return ListTile(
+            title: Text(member.name),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// MemberLocationScreen
+class MemberLocationScreen extends StatelessWidget {
+  final String member;
+
+  MemberLocationScreen({required this.member});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('$member Location'),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: GoogleMap(
+              onMapCreated: (GoogleMapController controller) {
+                // Initialize the Google Map controller here
+              },
+              initialCameraPosition: CameraPosition(
+                target: LatLng(37.7749, -122.4194), // Example coordinates
+                zoom: 14,
+              ),
+              markers: {
+                Marker(
+                  markerId: MarkerId('currentLocation'),
+                  position: LatLng(37.7749, -122.4194),
+                ),
+              },
+            ),
+          ),
+          DateFilter(),
+          VisitedLocationsTimeline(),
+        ],
+      ),
+    );
+  }
+}
+
+class DateFilter extends StatefulWidget {
+  @override
+  _DateFilterState createState() => _DateFilterState();
+}
+
+class _DateFilterState extends State<DateFilter> {
+  DateTime selectedDate = DateTime.now();
+
+  _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null && picked != selectedDate) {
+      setState(() {
+        selectedDate = picked;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('Date: ${DateFormat('yyyy-MM-dd').format(selectedDate)}'),
+          ElevatedButton(
+            onPressed: () => _selectDate(context),
+            child: Text('Change Date'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class VisitedLocationsTimeline extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: ListView.builder(
+        itemCount: 10, // Example count of visited locations
+        itemBuilder: (context, index) {
+          return ListTile(
+            title: Text('Visited Location ${index + 1}'),
+            subtitle: Text('Time: 12:00 PM'), // Example time
+            onTap: () {
+              // Navigate to route details
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+// RouteDetailsScreen
+class RouteDetailsScreen extends StatelessWidget {
+  final String member;
+
+  RouteDetailsScreen({required this.member});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Route Details for $member'),
+      ),
+      body: Column(
+        children: [
+          ListTile(
+            title: Text('Start Location: 123 Main St'),
+          ),
+          ListTile(
+            title: Text('Stop Location: 456 Elm St'),
+          ),
+          ListTile(
+            title: Text('Total KMs: 5.4 KM'),
+          ),
+          // Add more route details here
+        ],
+      ),
+    );
+  }
+}
